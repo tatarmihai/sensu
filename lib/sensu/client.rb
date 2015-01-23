@@ -136,26 +136,25 @@ module Sensu
       @logger.debug('processing check', {
         :check => check
       })
-      if check.has_key?(:command)
-        if @settings.check_exists?(check[:name])
-          check.merge!(@settings[:checks][check[:name]])
-          execute_check_command(check)
-        elsif @safe_mode
+      if @safe_mode and not @checks.has_key?(check[:name])
+        if @safe_mode and not @checks.has_key?(check[:name])
           check[:output] = 'Check is not locally defined (safe mode)'
           check[:status] = 3
           check[:handle] = false
           check[:executed] = Time.now.to_i
-          publish_result(check)
-        else
-          execute_check_command(check)
-        end
+          represented_clients.each { |client| publish_result(client, check) }
       else
-        if @extensions.check_exists?(check[:name])
-          run_check_extension(check)
+        runnable_check = check.merge(@checks[check[:name]] || {})
+        if runnable_check.has_key?(:command)
+          execute_check_command(runnable_check)
         else
-          @logger.warn('unknown check extension', {
-            :check => check
-          })
+          if @extensions.check_exists?(runnable_check[:extension])
+            run_check_extension(runnable_check)
+          else
+            @logger.warn('unknown check extension', {
+              :check => check
+            })
+          end
         end
       end
     end

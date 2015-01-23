@@ -139,8 +139,6 @@ module Sensu
           else
             handlers << handler
           end
-        elsif @extensions.handler_exists?(handler_name)
-          handlers << @extensions[:handlers][handler_name]
         else
           @logger.error('unknown handler', {
             :handler_name => handler_name
@@ -247,7 +245,7 @@ module Sensu
         log_level = event[:check][:type] == 'metric' ? :debug : :info
         @logger.send(log_level, 'handling event', {
           :event => event,
-          :handler => handler.respond_to?(:definition) ? handler.definition : handler
+          :handler => handler
         })
         @handlers_in_progress_count += 1
         on_error = Proc.new do |error|
@@ -312,10 +310,10 @@ module Sensu
             end
             @handlers_in_progress_count -= 1
           when 'extension'
-            handler.safe_run(event_data) do |output, status|
+            @extensions[:handlers][handler[:extension]].safe_run(event_data, { :handler => handler }) do |output, status|
               output.each_line do |line|
                 @logger.info('handler extension output', {
-                  :extension => handler.definition,
+                  :handler => handler,
                   :output => line
                 })
               end
@@ -529,13 +527,10 @@ module Sensu
 
     def setup_publisher
       @logger.debug('scheduling check requests')
-      standard_checks = @settings.checks.reject do |check|
+      checks = @settings.checks.reject do |check|
         check[:standalone] || check[:publish] == false
       end
-      extension_checks = @extensions.checks.reject do |check|
-        check[:standalone] || check[:publish] == false || !check[:interval].is_a?(Integer)
-      end
-      schedule_checks(standard_checks + extension_checks)
+      schedule_checks(checks)
     end
 
     def publish_result(client, check)
